@@ -1,0 +1,94 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: auction_postgres
+    environment:
+      POSTGRES_DB: auction_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - auction_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auction_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: auction_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - auction_network
+
+  # Backend API
+  backend:
+    image: golang:1.21-alpine
+    container_name: auction_backend
+    working_dir: /app
+    environment:
+      DB_HOST: postgres
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: auction_db
+      DB_PORT: 5432
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      PORT: 9999
+      GIN_MODE: debug
+      JWT_SECRET: your-secret-key-here
+      JWT_EXPIRY: 24h
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001
+      TEAM_POINTS: 12000
+      BASE_BID_AMOUNT: 200
+      MIN_PLAYERS_PER_TEAM: 12
+      MAX_PLAYERS_PER_TEAM: 20
+    ports:
+      - "9999:9999"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+    networks:
+      - auction_network
+    command: sh -c "apk add --no-cache git && go mod download && go run main.go"
+
+  # Frontend
+  frontend:
+    image: node:18-alpine
+    container_name: auction_frontend
+    working_dir: /app
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:9999
+      NEXT_PUBLIC_WS_URL: ws://localhost:9999
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - auction_network
+    command: sh -c "npm install && npm run dev"
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  auction_network:
+    driver: bridge 
