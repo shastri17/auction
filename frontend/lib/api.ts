@@ -13,6 +13,8 @@ const api = axios.create({
 // Request interceptor to add auth token
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token')
+  console.log('API Request:', config.method?.toUpperCase(), config.url)
+  console.log('Using token:', token ? token.substring(0, 20) + '...' : 'No token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -21,7 +23,11 @@ api.interceptors.request.use((config) => {
 
 // Response interceptor to handle errors
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log('API Response:', response.status, response.config?.url)
+    console.log('Response data:', response.data)
+    return response
+  },
   (error) => {
     console.log('API Error:', {
       status: error.response?.status,
@@ -95,6 +101,14 @@ export interface Team {
   players: Player[]
 }
 
+export interface TeamWithCategoryStats extends Team {
+  categoryStats: {
+    women: number
+    men_under_35: number
+    men_35_plus: number
+  }
+}
+
 export interface Auction {
   id: string
   title: string
@@ -149,7 +163,9 @@ export const adminAPI = {
   getAuctions: async (status?: string): Promise<Auction[]> => {
     const params = status ? { status } : {}
     const response = await api.get('/api/v1/auctions', { params })
-    return response.data.data
+    console.log('getAuctions response:', response.data)
+    // Handle null response gracefully
+    return response.data.data || []
   },
 
   createAuction: async (auction: Partial<Auction>): Promise<Auction> => {
@@ -238,7 +254,16 @@ export const adminAPI = {
 // Team API
 export const teamAPI = {
   getDashboard: async (): Promise<TeamDashboard> => {
+    console.log('Making API call to /api/v1/team/dashboard')
     const response = await api.get('/api/v1/team/dashboard')
+    console.log('Raw API response:', response)
+    console.log('Response data:', response.data)
+    console.log('Response data.data:', response.data?.data)
+    
+    if (!response.data || !response.data.data) {
+      throw new Error('Invalid API response structure')
+    }
+    
     return response.data.data
   },
 

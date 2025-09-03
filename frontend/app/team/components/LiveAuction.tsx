@@ -58,18 +58,26 @@ export default function LiveAuction({ teamId, dashboard, remainingPoints: propRe
   const [bidAmount, setBidAmount] = useState(0)
   const [isBidding, setIsBidding] = useState(false)
   const [remainingPoints, setRemainingPoints] = useState(propRemainingPoints || 0)
+  const [auctionExists, setAuctionExists] = useState(false)
 
   // WebSocket connection for real-time updates
   const { sendMessage, isConnected } = useWebSocket({
     onMessage: (message) => {
-      console.log('WebSocket message received:', message)
-      
       switch (message.type) {
+        case 'auction_created':
         case 'auction_started':
+          setAuctionExists(true)
+          fetchCurrentAuction()
+          break
         case 'auction_updated':
         case 'next_player':
-        case 'auction_completed':
+        case 'player_assigned':
           fetchCurrentAuction()
+          break
+        case 'auction_completed':
+        case 'auction_ended':
+          setAuctionExists(false)
+          setCurrentAuction(null)
           break
         case 'new_bid':
         case 'bid_placed':
@@ -109,8 +117,22 @@ export default function LiveAuction({ teamId, dashboard, remainingPoints: propRe
       if (response.ok) {
         const data = await response.json()
         if (data.data && data.data.length > 0) {
-          setCurrentAuction(data.data[0])
-          fetchBids(data.data[0].id)
+          const auction = data.data[0]
+          // Check if auction exists
+          setAuctionExists(true)
+          
+          // Validate that the auction has a current_player before setting it
+          if (auction.current_player) {
+            setCurrentAuction(auction)
+            fetchBids(auction.id)
+          } else {
+            console.log('Auction found but no current player assigned')
+            setCurrentAuction(null)
+          }
+        } else {
+          console.log('No active auctions found')
+          setAuctionExists(false)
+          setCurrentAuction(null)
         }
       } else if (response.status === 401) {
         // Handle 401 error properly
@@ -121,6 +143,7 @@ export default function LiveAuction({ teamId, dashboard, remainingPoints: propRe
       }
     } catch (error) {
       console.error('Failed to fetch current auction:', error)
+      setCurrentAuction(null)
     }
   }
 
@@ -149,7 +172,7 @@ export default function LiveAuction({ teamId, dashboard, remainingPoints: propRe
 
 
   const handleBid = async () => {
-    if (!currentAuction || bidAmount <= currentAuction.current_bid) {
+    if (!currentAuction || !currentAuction.current_player || bidAmount <= (currentAuction.current_bid || 0)) {
       alert('Bid must be higher than current bid')
       return
     }
@@ -175,7 +198,7 @@ export default function LiveAuction({ teamId, dashboard, remainingPoints: propRe
   }
 
   const handleQuickBid = async (amount: number) => {
-    if (!currentAuction || amount <= currentAuction.current_bid) {
+    if (!currentAuction || !currentAuction.current_player || amount <= (currentAuction.current_bid || 0)) {
       alert('Bid must be higher than current bid')
       return
     }
@@ -216,19 +239,19 @@ export default function LiveAuction({ teamId, dashboard, remainingPoints: propRe
     if (!currentAuction) return 0
     
     // If no bids yet (current_bid is 0 or base price), allow first bid at base price
-    if (currentAuction.current_bid <= 200) {
+    if ((currentAuction.current_bid || 0) <= 200) {
       return 200
     }
     
     // Otherwise, calculate next bid amount
-    return getNextBidAmount(currentAuction.current_bid)
+    return getNextBidAmount(currentAuction.current_bid || 0)
   }
 
   // Calculate maximum safe bid based on remaining players needed
   const minPlayersRequired = 12
   const getMaxSafeBid = () => {
     const playersAcquired = dashboard?.player_count || 0
-    const remainingPlayersNeeded = minPlayersRequired - playersAcquired - 1 // -1 for current player being bid on
+    const remainingPlayersNeeded = Math.max(0, minPlayersRequired - playersAcquired - 1) // -1 for current player being bid on
     
     if (remainingPlayersNeeded <= 0) {
       // Already have minimum players, can bid up to remaining points
@@ -246,19 +269,68 @@ export default function LiveAuction({ teamId, dashboard, remainingPoints: propRe
   const nextBidAmount = getCurrentBidAmount()
   const canAffordNextBid = nextBidAmount <= maxSafeBid
 
-  // Debug logging
-  console.log('Dashboard data:', dashboard)
-  console.log('Remaining points:', remainingPoints)
-  console.log('Players acquired:', dashboard?.player_count || 0)
-  console.log('Max safe bid:', maxSafeBid)
 
+
+  if (!auctionExists) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-gray-50 via-slate-50 to-zinc-50">
+        <div className="text-center max-w-2xl mx-auto p-8">
+          {/* Animated Gavel Icon */}
+          <div className="relative mb-8">
+            <div className="absolute inset-0 bg-gradient-to-r from-gray-400 to-slate-500 rounded-full blur-2xl opacity-20 animate-pulse"></div>
+            <div className="relative w-24 h-24 mx-auto bg-gradient-to-br from-gray-500 via-slate-600 to-zinc-600 rounded-full flex items-center justify-center shadow-2xl transform hover:scale-110 transition-all duration-500">
+              <Gavel className="h-12 w-12 text-white drop-shadow-lg animate-bounce" style={{ animationDuration: '2s' }} />
+            </div>
+          </div>
+          
+          {/* Main Heading */}
+          <h3 className="text-4xl font-bold bg-gradient-to-r from-gray-800 via-slate-700 to-zinc-700 bg-clip-text text-transparent mb-8">
+            No Active Auction
+          </h3>
+          
+          {/* Status indicator */}
+          <div className="flex items-center justify-center space-x-2">
+            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+            <span className="text-sm text-gray-600 font-medium">Waiting for Auction to Start</span>
+          </div>
+          
+          {/* Floating particles */}
+          <div className="absolute top-20 left-20 w-2 h-2 bg-gray-300 rounded-full animate-ping opacity-60"></div>
+          <div className="absolute top-32 right-32 w-1.5 h-1.5 bg-slate-300 rounded-full animate-ping opacity-60" style={{ animationDelay: '1s' }}></div>
+          <div className="absolute bottom-20 left-32 w-1 h-1 bg-zinc-300 rounded-full animate-ping opacity-60" style={{ animationDelay: '2s' }}></div>
+        </div>
+      </div>
+    )
+  }
+
+  // Add null check for current_player
   if (!currentAuction) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <Gavel className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-          <h3 className="text-xl font-semibold text-gray-600 mb-2">No Active Auction</h3>
-          <p className="text-gray-500">Wait for the admin to start an auction</p>
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
+        <div className="text-center max-w-2xl mx-auto p-8">
+          {/* Animated Gavel Icon */}
+          <div className="relative mb-8">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full blur-2xl opacity-20 animate-pulse"></div>
+            <div className="relative w-24 h-24 mx-auto bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-600 rounded-full flex items-center justify-center shadow-2xl transform hover:scale-110 transition-all duration-500">
+              <Gavel className="h-12 w-12 text-white drop-shadow-lg animate-bounce" style={{ animationDuration: '2s' }} />
+            </div>
+          </div>
+          
+          {/* Main Heading */}
+          <h3 className="text-4xl font-bold bg-gradient-to-r from-gray-800 via-blue-700 to-purple-700 bg-clip-text text-transparent mb-4">
+            Waiting for Next Player
+          </h3>
+          
+          {/* Status indicator */}
+          <div className="mt-8 flex items-center justify-center space-x-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-sm text-gray-600 font-medium">Auction Session Active</span>
+          </div>
+          
+          {/* Floating particles */}
+          <div className="absolute top-20 left-20 w-2 h-2 bg-blue-300 rounded-full animate-ping opacity-60"></div>
+          <div className="absolute top-32 right-32 w-1.5 h-1.5 bg-purple-300 rounded-full animate-ping opacity-60" style={{ animationDelay: '1s' }}></div>
+          <div className="absolute bottom-20 left-32 w-1 h-1 bg-indigo-300 rounded-full animate-ping opacity-60" style={{ animationDelay: '2s' }}></div>
         </div>
       </div>
     )
@@ -286,182 +358,141 @@ export default function LiveAuction({ teamId, dashboard, remainingPoints: propRe
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Player Info */}
-        <div className="lg:col-span-2 space-y-6">
-                                {/* Player Card */}
-                      <div className="bg-white rounded-xl shadow-lg overflow-hidden transform hover:scale-105 transition-all duration-300">
-                                                <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-6 text-white relative overflow-hidden">
-                          <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white to-transparent opacity-10 animate-pulse" style={{ animationDuration: '4s' }}></div>
-                          <div className="relative z-10 flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                    <span className="text-2xl font-bold">
-                      {currentAuction.current_player.name.split(' ').map(n => n[0]).join('')}
-                    </span>
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold">{currentAuction.current_player.name}</h2>
-                    <div className="flex items-center space-x-4 text-sm opacity-90 mt-1">
-                      <span className="flex items-center">
-                        <Clock className="h-4 w-4 mr-2" />
-                        {currentAuction.current_player.age} years
-                      </span>
-                      <span className="flex items-center">
-                        <Users className="h-4 w-4 mr-2" />
-                        {currentAuction.current_player.gender === 'female' ? 'Female' : 'Male'}
-                      </span>
-                    </div>
-                  </div>
+      <div className="flex-1">
+        {/* Player Info */}
+        <div className="space-y-6">
+          {/* Player Card */}
+                     <div className="bg-white rounded-2xl shadow-2xl overflow-hidden transform hover:scale-105 transition-all duration-500 border border-gray-100">
+             {/* Header with gradient background */}
+             <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-8 text-white relative overflow-hidden">
+               {/* Animated background elements */}
+               <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white to-transparent opacity-10 animate-pulse" style={{ animationDuration: '4s' }}></div>
+               <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -translate-y-16 translate-x-16"></div>
+               <div className="absolute bottom-0 left-0 w-24 h-24 bg-white opacity-5 rounded-full translate-y-12 -translate-x-12"></div>
+               
+               <div className="relative z-10 flex items-center justify-between">
+                 <div className="flex items-center space-x-6">
+                   {/* Player Avatar */}
+                   <div className="relative">
+                     <div className="w-20 h-20 bg-white bg-opacity-20 rounded-full flex items-center justify-center border-2 border-white border-opacity-30 backdrop-blur-sm">
+                       <span className="text-3xl font-bold text-white drop-shadow-lg">
+                         {currentAuction.current_player.name.split(' ').map(n => n[0]).join('')}
+                       </span>
+                     </div>
+                     {/* Glow effect */}
+                     <div className="absolute inset-0 w-20 h-20 bg-white rounded-full opacity-20 blur-xl animate-pulse"></div>
+                   </div>
+                   
+                   {/* Player Info */}
+                   <div>
+                     <h2 className="text-4xl font-bold text-white drop-shadow-lg mb-2">{currentAuction.current_player.name}</h2>
+                     <div className="flex items-center space-x-6 text-lg opacity-90">
+                       <span className="flex items-center bg-white bg-opacity-20 px-4 py-2 rounded-full backdrop-blur-sm">
+                         <Clock className="h-5 w-5 mr-2" />
+                         {currentAuction.current_player.age} years
+                       </span>
+                       <span className="flex items-center bg-white bg-opacity-20 px-4 py-2 rounded-full backdrop-blur-sm">
+                         <Users className="h-5 w-5 mr-2" />
+                         {currentAuction.current_player.gender === 'female' ? 'Female' : 'Male'}
+                       </span>
+                     </div>
+                   </div>
+                 </div>
+                 
+                 {/* Base Price Badge */}
+                 <div className="text-right">
+                   <div className="bg-white bg-opacity-20 rounded-2xl px-6 py-4 backdrop-blur-sm border border-white border-opacity-30">
+                     <div className="text-sm opacity-90 mb-1">Base Price</div>
+                     <div className="text-4xl font-bold text-white drop-shadow-lg">{currentAuction.current_player.base_price}</div>
+                   </div>
+                 </div>
+               </div>
+            </div>
+            
+                         {/* Player Details */}
+             <div className="p-8 bg-gradient-to-br from-gray-50 to-white">
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-100 shadow-lg">
+                   <div className="flex items-center space-x-3 mb-3">
+                     <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                       <Trophy className="h-5 w-5 text-white" />
+                     </div>
+                     <span className="text-lg font-semibold text-gray-800">Playing Strength</span>
+                   </div>
+                   <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg">
+                     {currentAuction.current_player.playing_category}
+                   </span>
+                 </div>
+
+                 <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100 shadow-lg">
+                   <div className="flex items-center space-x-3 mb-3">
+                     <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                       <AlertCircle className="h-5 w-5 text-white" />
+                     </div>
+                     <span className="text-lg font-semibold text-gray-800">Achievements</span>
+                   </div>
+                   <p className="text-sm text-gray-700 leading-relaxed">
+                     {currentAuction.current_player.accomplishments || 'No accomplishments listed'}
+                   </p>
+                 </div>
+
+                 <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-6 border border-blue-100 shadow-lg">
+                   <div className="flex items-center space-x-3 mb-3">
+                     <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg flex items-center justify-center">
+                       <Users className="h-5 w-5 text-white" />
+                     </div>
+                     <span className="text-lg font-semibold text-gray-800">Category</span>
+                   </div>
+                   <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-gradient-to-r from-blue-500 to-cyan-600 text-white shadow-lg">
+                     {currentAuction.current_player.gender === 'female' ? 'Women' : 
+                       currentAuction.current_player.age < 35 ? 'Men Under 35' : 'Men 35+'}
+                   </span>
+                 </div>
+               </div>
+            </div>
+          </div>
+
+          {/* Maximum Safe Bid */}
+          <div className="bg-gradient-to-r from-orange-500 via-red-500 to-yellow-500 rounded-2xl p-8 text-white shadow-2xl relative overflow-hidden transform hover:scale-105 transition-all duration-500 border border-orange-200">
+            {/* Animated background elements */}
+            <div className="absolute inset-0 bg-gradient-to-r from-orange-500 via-red-500 to-yellow-500 animate-pulse opacity-30"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white to-transparent opacity-10 animate-pulse" style={{ animationDuration: '3s' }}></div>
+            
+            {/* Decorative circles */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-10 rounded-full -translate-y-16 translate-x-16"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-white opacity-10 rounded-full translate-y-12 -translate-x-12"></div>
+            
+            <div className="relative z-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-2xl font-bold mb-3 flex items-center">
+                    <span className="mr-3 text-3xl">💰</span>
+                    Maximum Safe Bid
+                  </h4>
+                  <p className="text-lg opacity-90 leading-relaxed">Based on your remaining points and minimum players required</p>
                 </div>
                 <div className="text-right">
-                  <div className="bg-white bg-opacity-20 rounded-lg px-4 py-3">
-                    <div className="text-sm opacity-90">Base Price</div>
-                    <div className="text-3xl font-bold">{currentAuction.current_player.base_price}</div>
+                  <div className="bg-white bg-opacity-20 rounded-2xl px-8 py-6 backdrop-blur-sm border border-white border-opacity-30 shadow-xl">
+                    <div className="text-5xl font-bold animate-bounce text-white drop-shadow-lg">
+                      <span className="text-black font-extrabold">{maxSafeBid.toLocaleString()}</span>
+                    </div>
+                    <div className="text-lg opacity-90 mt-2 font-semibold">points</div>
                   </div>
                 </div>
               </div>
             </div>
             
-            {/* Player Details */}
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Trophy className="h-4 w-4 text-yellow-600" />
-                    <span className="text-sm font-semibold text-gray-700">Playing Strength</span>
-                  </div>
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                    {currentAuction.current_player.playing_category}
-                  </span>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <DollarSign className="h-4 w-4 text-blue-600" />
-                    <span className="text-sm font-semibold text-gray-700">Current Price</span>
-                  </div>
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                    {currentAuction.current_player.current_price || currentAuction.current_player.base_price}
-                  </span>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <AlertCircle className="h-4 w-4 text-purple-600" />
-                    <span className="text-sm font-semibold text-gray-700">Achievements</span>
-                  </div>
-                  <p className="text-sm text-gray-600 line-clamp-2">
-                    {currentAuction.current_player.accomplishments || 'No accomplishments listed'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-                                {/* Maximum Safe Bid */}
-                      <div className="bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 rounded-xl p-6 text-white shadow-lg relative overflow-hidden transform hover:scale-105 transition-all duration-300">
-                        <div className="absolute inset-0 bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 animate-pulse opacity-30"></div>
-                        <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white to-transparent opacity-10 animate-pulse" style={{ animationDuration: '3s' }}></div>
-                        <div className="relative z-10">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h4 className="text-lg font-bold mb-2 flex items-center">
-                                <span className="mr-2">💰</span>
-                                Maximum Safe Bid
-                              </h4>
-                              <p className="text-sm opacity-90">Based on your remaining points and minimum players required</p>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-4xl font-bold animate-bounce bg-white bg-opacity-30 rounded-lg px-4 py-2 backdrop-blur-sm shadow-lg border border-white border-opacity-30">
-                                <span className="text-black font-extrabold drop-shadow-lg">{maxSafeBid.toLocaleString()}</span>
-                              </div>
-                              <div className="text-sm opacity-90 mt-1 font-semibold">points</div>
-                            </div>
-                          </div>
-                        </div>
-                        {/* Enhanced animated particles */}
-                        <div className="absolute top-4 right-4 w-4 h-4 bg-yellow-300 rounded-full animate-ping shadow-lg"></div>
-                        <div className="absolute bottom-4 left-6 w-3 h-3 bg-yellow-300 rounded-full animate-ping shadow-lg" style={{ animationDelay: '0.5s' }}></div>
-                        <div className="absolute top-6 left-4 w-2 h-2 bg-yellow-300 rounded-full animate-ping shadow-lg" style={{ animationDelay: '1s' }}></div>
-                        <div className="absolute top-8 right-8 w-2 h-2 bg-white rounded-full animate-ping opacity-60" style={{ animationDelay: '1.5s' }}></div>
-                        <div className="absolute bottom-8 right-2 w-3 h-3 bg-white rounded-full animate-ping opacity-40" style={{ animationDelay: '2s' }}></div>
-                        {/* Floating sparkles */}
-                        <div className="absolute top-2 right-2 text-yellow-300 animate-ping" style={{ animationDelay: '0.3s' }}>✨</div>
-                        <div className="absolute bottom-2 left-2 text-yellow-300 animate-ping" style={{ animationDelay: '0.8s' }}>✨</div>
-                      </div>
-        </div>
-
-        {/* Right Column - Bidding */}
-        <div className="flex flex-col space-y-4">
-          {/* Current Bid Status */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <h4 className="text-lg font-semibold text-gray-900 mb-3">Current Bid</h4>
-            <div className="text-3xl font-bold text-blue-600 mb-2">
-              {currentAuction.current_bid > 0 ? currentAuction.current_bid.toLocaleString() : '0'}
-            </div>
-            {currentAuction.current_bid > 0 ? (
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-600">by</span>
-                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                  {isWinningBid ? 'You' : currentAuction.winning_team?.name || 'Unknown'}
-                </span>
-                {isWinningBid && (
-                  <span className="px-3 py-1 bg-green-100 text-green-600 rounded-full text-sm font-medium">
-                    Winning!
-                  </span>
-                )}
-              </div>
-            ) : (
-              <p className="text-blue-700 text-sm">No bids yet - Be the first!</p>
-            )}
-          </div>
-
-          {/* Next Bid Info */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <h4 className="text-lg font-semibold text-gray-900 mb-3">Next Bid</h4>
-            <div className="text-3xl font-bold text-green-600 mb-2">
-              {getCurrentBidAmount().toLocaleString()}
-            </div>
-            <div className="space-y-1 text-sm text-gray-600">
-              <p>Increment: {getBidIncrement(currentAuction.current_bid).toLocaleString()}</p>
-              <p>Max Safe: {maxSafeBid.toLocaleString()}</p>
-            </div>
-          </div>
-
-          {/* Bid Button - Moved to bottom */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <button
-              onClick={() => handleQuickBid(getCurrentBidAmount())}
-              disabled={isBidding || !canBid}
-              className={`w-full px-6 py-4 rounded-lg font-semibold text-lg transition-all duration-300 ease-in-out ${
-                isBidding || !canBid
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105 hover:-translate-y-1'
-              }`}
-            >
-              {isBidding 
-                ? 'Placing Bid...' 
-                : isWinningBid 
-                  ? 'You\'re Winning!' 
-                  : `Place Bid ${getCurrentBidAmount().toLocaleString()}`
-              }
-            </button>
+            {/* Enhanced animated particles */}
+            <div className="absolute top-6 right-6 w-4 h-4 bg-yellow-300 rounded-full animate-ping shadow-lg"></div>
+            <div className="absolute bottom-6 left-8 w-3 h-3 bg-yellow-300 rounded-full animate-ping shadow-lg" style={{ animationDelay: '0.5s' }}></div>
+            <div className="absolute top-8 left-6 w-2 h-2 bg-yellow-300 rounded-full animate-ping shadow-lg" style={{ animationDelay: '1s' }}></div>
+            <div className="absolute top-10 right-10 w-2 h-2 bg-white rounded-full animate-ping opacity-60" style={{ animationDelay: '1.5s' }}></div>
+            <div className="absolute bottom-10 right-4 w-3 h-3 bg-white rounded-full animate-ping opacity-40" style={{ animationDelay: '2s' }}></div>
             
-            {!canBid && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 animate-pulse">
-                {isWinningBid 
-                  ? "You're winning - wait for others to bid"
-                  : !canAffordNextBid
-                  ? `Need ${(minPlayersRequired - (dashboard?.player_count || 0)) * 200} for remaining players`
-                  : `Need ${getCurrentBidAmount().toLocaleString()} points`
-                }
-              </div>
-            )}
-            
-            {!isConnected && (
-              <p className="mt-4 text-red-600 text-sm text-center animate-pulse">Not connected to auction server</p>
-            )}
+            {/* Floating sparkles */}
+            <div className="absolute top-4 right-4 text-yellow-300 animate-ping text-2xl" style={{ animationDelay: '0.3s' }}>✨</div>
+            <div className="absolute bottom-4 left-4 text-yellow-300 animate-ping text-2xl" style={{ animationDelay: '0.8s' }}>✨</div>
+            <div className="absolute top-12 left-12 text-yellow-300 animate-ping text-xl" style={{ animationDelay: '1.2s' }}>💎</div>
           </div>
         </div>
       </div>

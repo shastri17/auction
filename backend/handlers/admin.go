@@ -142,7 +142,7 @@ func (h *Handlers) CreateAuction(c *gin.Context) {
 		return
 	}
 
-	auction.Status = "pending"
+	auction.Status = "active"
 	auction.CreatedAt = time.Now()
 	auction.UpdatedAt = time.Now()
 
@@ -154,12 +154,23 @@ func (h *Handlers) CreateAuction(c *gin.Context) {
 		return
 	}
 
+	// Create response with related data
+	type AuctionResponse struct {
+		models.Auction
+		CurrentPlayer *models.Player `json:"current_player,omitempty"`
+		WinningTeam   *models.Team   `json:"winning_team,omitempty"`
+	}
+
+	response := AuctionResponse{
+		Auction: auction,
+	}
+
 	// Broadcast auction creation
-	h.Hub.Broadcast("auction_created", auction)
+	h.Hub.Broadcast("auction_created", response)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"data":    auction,
+		"data":    response,
 	})
 }
 
@@ -970,6 +981,24 @@ func (h *Handlers) AssignPlayerToTeam(c *gin.Context) {
 		return
 	}
 
+	// Clear the current player from any active auction
+	var activeAuction models.Auction
+	if err := tx.Where("status = ? AND current_player_id = ?", "active", parsedPlayerID).First(&activeAuction).Error; err == nil {
+		// Found an active auction with this player as current player, clear it
+		activeAuction.CurrentPlayerID = nil
+		activeAuction.CurrentBid = 0
+		activeAuction.UpdatedAt = time.Now()
+
+		if err := tx.Save(&activeAuction).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "Failed to clear current player from auction",
+			})
+			return
+		}
+	}
+
 	// Commit transaction
 	if err := tx.Commit().Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -985,6 +1014,22 @@ func (h *Handlers) AssignPlayerToTeam(c *gin.Context) {
 		"team_id":   team.ID,
 		"points":    req.Points,
 	})
+
+	// Also broadcast auction update if we cleared a current player
+	if activeAuction.ID != uuid.Nil {
+		// Create response with related data for the auction
+		type AuctionResponse struct {
+			models.Auction
+			CurrentPlayer *models.Player `json:"current_player,omitempty"`
+			WinningTeam   *models.Team   `json:"winning_team,omitempty"`
+		}
+
+		auctionResponse := AuctionResponse{
+			Auction: activeAuction,
+		}
+
+		h.Hub.Broadcast("auction_updated", auctionResponse)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

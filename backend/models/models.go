@@ -84,7 +84,7 @@ type PlayerCategory struct {
 type Auction struct {
 	ID              uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
 	Title           string     `json:"title" gorm:"not null"`
-	Status          string     `json:"status" gorm:"default:'pending'"` // pending, active, completed
+	Status          string     `json:"status" gorm:"default:'active'"` // active, completed
 	StartTime       time.Time  `json:"start_time"`
 	EndTime         *time.Time `json:"end_time"`
 	CurrentPlayerID *uuid.UUID `json:"current_player_id" gorm:"type:uuid"`

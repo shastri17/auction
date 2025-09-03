@@ -17,7 +17,8 @@ import {
   UserCheck,
   Calendar,
   Zap,
-  LogOut
+  LogOut,
+  Shield
 } from 'lucide-react'
 import { teamAPI, adminAPI, generalAPI } from '@/lib/api'
 import LiveAuction from './components/LiveAuction'
@@ -247,8 +248,12 @@ function TeamDashboardContent() {
   const [activeTab, setActiveTab] = useState('overview')
   const [allPlayers, setAllPlayers] = useState<Player[]>([])
   const [filteredPlayers, setFilteredPlayers] = useState<Player[]>([])
+  const [activeCategory, setActiveCategory] = useState<'women' | 'men_under_35' | 'men_35_plus'>('women')
+  const [searchQuery, setSearchQuery] = useState('')
   const [playersLoading, setPlayersLoading] = useState(false)
   const [teams, setTeams] = useState<any[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   
   // WebSocket for real-time updates
   const { isConnected } = useWebSocket()
@@ -275,17 +280,31 @@ function TeamDashboardContent() {
       }
       
       console.log('Fetching team dashboard data...')
+      console.log('Using token:', token)
+      console.log('API Base URL:', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9999')
+      
+      // Test basic connectivity first
+      try {
+        const healthResponse = await fetch('http://localhost:9999/health')
+        const healthData = await healthResponse.text()
+        console.log('Health check response:', healthData)
+      } catch (healthError) {
+        console.error('Health check failed:', healthError)
+        throw new Error('Cannot connect to backend server')
+      }
       
       // Fetch team dashboard data
       const dashboardData = await teamAPI.getDashboard()
       console.log('Team dashboard data received:', dashboardData)
       setDashboard(dashboardData)
+      setError(null) // Clear any previous errors
+      setIsLoading(false) // Data loaded successfully
 
       // Fetch current auction data
       console.log('Fetching auction data...')
       const auctions = await adminAPI.getAuctions('active')
       console.log('Auction data received:', auctions)
-      if (auctions.length > 0) {
+      if (auctions && Array.isArray(auctions) && auctions.length > 0) {
         const activeAuction = auctions[0]
         setCurrentAuction({
           id: activeAuction.id,
@@ -295,6 +314,9 @@ function TeamDashboardContent() {
           current_bid: activeAuction.current_bid,
           winning_team: activeAuction.winning_team
         })
+      } else {
+        console.log('No active auctions found')
+        setCurrentAuction(null)
       }
     } catch (error: any) {
       console.error('Failed to fetch team data:', error)
@@ -318,6 +340,8 @@ function TeamDashboardContent() {
       // For network errors or other issues, don't logout immediately
       // Just show error state and let user retry
       console.log('Non-authentication error, not logging out:', error.message)
+      setError(error.message || 'Failed to load dashboard data')
+      setIsLoading(false)
       setDashboard(null)
     }
   }
@@ -329,6 +353,14 @@ function TeamDashboardContent() {
     
     fetchTeamData()
   }, []) // Only run once on mount
+
+  useEffect(() => {
+    if (allPlayers.length > 0) {
+      // Default to women players
+      const womenPlayers = allPlayers.filter(player => player.gender === 'female')
+      setFilteredPlayers(womenPlayers)
+    }
+  }, [allPlayers])
 
   const handleTabClick = (tabId: string) => {
     setActiveTab(tabId)
@@ -400,7 +432,47 @@ function TeamDashboardContent() {
     return currentAuction?.current_bid || 0
   }
 
-  if (!dashboard) {
+  // Filter players based on search query within active category
+  const getFilteredPlayers = (players: Player[]) => {
+    if (!searchQuery.trim()) return players
+    return players.filter(player => 
+      player.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      player.playing_category.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="text-red-500 mb-4">
+            <AlertCircle className="h-16 w-16 mx-auto" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to Load Dashboard</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <div className="space-y-2">
+            <button 
+              onClick={fetchTeamData}
+              className="btn-primary px-4 py-2 rounded-lg"
+            >
+              Try Again
+            </button>
+            <button 
+              onClick={() => router.push('/login')}
+              className="btn-secondary px-4 py-2 rounded-lg ml-2"
+            >
+              Back to Login
+            </button>
+          </div>
+          <div className="mt-4 text-xs text-gray-500">
+            <p>Check the console for more details</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (isLoading || !dashboard) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -484,7 +556,7 @@ function TeamDashboardContent() {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="card">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
@@ -537,6 +609,34 @@ function TeamDashboardContent() {
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-500">Min Required</p>
                     <p className="text-2xl font-semibold text-gray-900">{dashboard.min_players}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                      <span className="text-lg">💰</span>
+                    </div>
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Max Safe Bid</p>
+                    <p className="text-2xl font-semibold text-orange-600">
+                      {(() => {
+                        const minPlayersRequired = 12
+                        const playersAcquired = dashboard.player_count
+                        const remainingPlayersNeeded = Math.max(0, minPlayersRequired - playersAcquired - 1)
+                        
+                        if (remainingPlayersNeeded <= 0) {
+                          return dashboard.remaining_points.toLocaleString()
+                        }
+                        
+                        const minPointsForRemainingPlayers = remainingPlayersNeeded * 200
+                        const safePointsToBid = dashboard.remaining_points - minPointsForRemainingPlayers
+                        return Math.max(0, safePointsToBid).toLocaleString()
+                      })()}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -655,7 +755,7 @@ function TeamDashboardContent() {
           <div className="space-y-6">
             <h2 className="text-2xl font-bold text-gray-900">Budget Management</h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="card text-center">
                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <DollarSign className="h-8 w-8 text-blue-600" />
@@ -680,6 +780,17 @@ function TeamDashboardContent() {
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Remaining</h3>
                 <p className="text-3xl font-bold text-purple-600">{dashboard.remaining_points.toLocaleString()}</p>
+                <p className="text-sm text-gray-500">points</p>
+              </div>
+
+              <div className="card text-center">
+                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Shield className="h-8 w-8 text-orange-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Max Safe Bid</h3>
+                <p className="text-3xl font-bold text-orange-600">
+                  {dashboard.remaining_points - (Math.max(0, dashboard.min_players - dashboard.player_count - 1) * 200)}
+                </p>
                 <p className="text-sm text-gray-500">points</p>
               </div>
             </div>
@@ -712,7 +823,7 @@ function TeamDashboardContent() {
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="font-medium text-gray-900 mb-2">Points per Remaining Player</h4>
                     <p className="text-2xl font-bold text-green-600">
-                      {dashboard.remaining_points / Math.max(1, dashboard.min_players - dashboard.player_count)}
+                      {dashboard.remaining_points / Math.max(1, Math.max(0, dashboard.min_players - dashboard.player_count - 1))}
                     </p>
                     <p className="text-sm text-gray-500">points</p>
                   </div>
@@ -726,23 +837,86 @@ function TeamDashboardContent() {
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold text-gray-900">All Players</h2>
-              <div className="flex items-center space-x-4">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search players..."
-                    className="input-field pl-10 pr-4 py-2 w-64"
-                    onChange={(e) => {
-                      const query = e.target.value.toLowerCase()
-                      const filtered = allPlayers.filter(player => 
-                        player.name.toLowerCase().includes(query) ||
-                        player.playing_category.toLowerCase().includes(query)
-                      )
-                      setFilteredPlayers(filtered)
-                    }}
+            </div>
+
+            {/* Category Tabs */}
+            <div className="flex space-x-4 border-b border-gray-200">
+              {[
+                { id: 'women', name: 'Women Players', color: 'pink', icon: '👩' },
+                { id: 'men_under_35', name: 'Men Under 35 Years', color: 'blue', icon: '👨' },
+                { id: 'men_35_plus', name: 'Men 35 and Above Years', color: 'green', icon: '👴' }
+              ].map((category) => (
+                <button
+                  key={category.id}
+                  onClick={() => {
+                    setSearchQuery('')
+                    
+                    let filtered = allPlayers
+                    switch (category.id) {
+                      case 'women':
+                        filtered = allPlayers.filter(player => player.gender === 'female')
+                        setActiveCategory('women')
+                        break
+                      case 'men_under_35':
+                        filtered = allPlayers.filter(player => player.gender === 'male' && player.age < 35)
+                        setActiveCategory('men_under_35')
+                        break
+                      case 'men_35_plus':
+                        filtered = allPlayers.filter(player => player.gender === 'male' && player.age >= 35)
+                        setActiveCategory('men_35_plus')
+                        break
+                    }
+                    setFilteredPlayers(filtered)
+                  }}
+                  className={`flex items-center space-x-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
+                    activeCategory === category.id
+                      ? 'border-primary-500 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="text-lg">{category.icon}</span>
+                  <span>{category.name}</span>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    category.id === 'women' ? 'bg-pink-100 text-pink-800 border-pink-200' :
+                    category.id === 'men_under_35' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                    'bg-green-100 text-green-800 border-green-200'
+                  }`}>
+                    {(() => {
+                      switch (category.id) {
+                        case 'women': return allPlayers.filter(p => p.gender === 'female').length
+                        case 'men_under_35': return allPlayers.filter(p => p.gender === 'male' && p.age < 35).length
+                        case 'men_35_plus': return allPlayers.filter(p => p.gender === 'male' && p.age >= 35).length
+                        default: return 0
+                      }
+                    })()}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Search Bar - Positioned below category tabs like roster */}
+            <div className="flex justify-end">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search players..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+                <svg
+                  className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                   />
-                  <Users className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                </div>
+                </svg>
               </div>
             </div>
 
@@ -753,60 +927,81 @@ function TeamDashboardContent() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredPlayers.map((player) => (
-                  <div key={player.id} className="card hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900">{player.name}</h3>
-                        <p className="text-sm text-gray-500">{player.playing_category}</p>
+                {(() => {
+                  const searchFilteredPlayers = getFilteredPlayers(filteredPlayers)
+                  
+                  if (searchFilteredPlayers.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-gray-500 col-span-full">
+                        <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                        <p>
+                          {searchQuery.trim() 
+                            ? `No players found matching "${searchQuery}" in this category`
+                            : 'No players found in this category'
+                          }
+                        </p>
                       </div>
-                      <div className="text-right">
-                        <span className={`badge ${player.is_sold ? 'badge-success' : 'badge-warning'}`}>
-                          {player.is_sold ? 'Sold' : 'Available'}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Age:</span>
-                        <span className="font-medium">{player.age} years</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Gender:</span>
-                        <span className="font-medium capitalize">{player.gender}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Base Price:</span>
-                        <span className="font-medium">{player.base_price} pts</span>
-                      </div>
-                      {player.is_sold && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Sold For:</span>
-                          <span className="font-medium text-green-600">{player.current_price} pts</span>
+                    )
+                  }
+                  
+                  return searchFilteredPlayers.map((player) => (
+                    <div key={player.id} className="card hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">{player.name}</h3>
+                          <p className="text-sm text-gray-500">{player.playing_category}</p>
                         </div>
-                      )}
-                      {player.current_team_id && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Team:</span>
-                          <span className="font-medium text-blue-600">
-                            {(() => {
-                              // Find team name from teams data
-                              const team = teams.find(t => t.id === player.current_team_id)
-                              return team ? team.name : `Team ${player.current_team_id.slice(0, 8)}`
-                            })()}
+                        <div className="text-right">
+                          <span className={`badge ${player.is_sold ? 'badge-success' : 'badge-warning'}`}>
+                            {player.is_sold ? 'Sold' : 'Available'}
                           </span>
                         </div>
+                      </div>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Age:</span>
+                          <span className="font-medium">{player.age} years</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Gender:</span>
+                          <span className="font-medium capitalize">{player.gender}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Category:</span>
+                          <span className="font-medium">
+                            {player.gender === 'female' ? 'Women' : 
+                              player.age < 35 ? 'Men Under 35' : 'Men 35+'}
+                          </span>
+                        </div>
+                        {player.is_sold && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Sold For:</span>
+                            <span className="font-medium text-green-600">{player.current_price} pts</span>
+                          </div>
+                        )}
+                        {player.current_team_id && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Team:</span>
+                            <span className="font-medium text-blue-600">
+                              {(() => {
+                                // Find team name from teams data
+                                const team = teams.find(t => t.id === player.current_team_id)
+                                return team ? team.name : `Team ${player.current_team_id.slice(0, 8)}`
+                              })()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {player.accomplishments && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <p className="text-xs text-gray-500 line-clamp-2">{player.accomplishments}</p>
+                        </div>
                       )}
                     </div>
-                    
-                    {player.accomplishments && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs text-gray-500 line-clamp-2">{player.accomplishments}</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))
+                })()}
               </div>
             )}
           </div>
