@@ -50,7 +50,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }): 
     }
 
     try {
-      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:9999'
+      const wsUrl = ' ws://13.234.48.132:9999'
       globalWs = new WebSocket(`${wsUrl}/api/v1/ws`)
 
       // Set connection timeout
