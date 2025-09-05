@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"auction-backend/database"
 	"auction-backend/handlers"
@@ -46,16 +47,13 @@ func main() {
 	// CORS configuration
 
 	// CORS must come first
-	corsConfig := cors.Config{
-		AllowOriginFunc: func(origin string) bool {
-			log.Println("Origin:", origin)
-			return true // dynamically allow all origins
-		},
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://13.234.48.132:3000", "http://127.0.0.1:3000", "http://localhost:3000"}, // allow all origins
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: true,
-	}
-	r.Use(cors.New(corsConfig))
+		MaxAge:           12 * time.Hour,
+	}))
 
 	// OPTIONS catch-all to make sure preflight never fails
 	r.OPTIONS("/*path", func(c *gin.Context) {
