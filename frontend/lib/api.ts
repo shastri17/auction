@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9999'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://13.234.48.132:9999'
 
 // Create axios instance with default config
 const api = axios.create({
