@@ -41,6 +41,10 @@ func Recovery() gin.HandlerFunc {
 // Auth middleware for JWT authentication
 func Auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if c.Request.Method == "OPTIONS" {
+			c.Next()
+			return
+		}
 		token := c.GetHeader("Authorization")
 		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
@@ -94,6 +98,10 @@ func Auth() gin.HandlerFunc {
 // RoleAuth middleware for role-based access control
 func RoleAuth(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if c.Request.Method == "OPTIONS" {
+			c.Next()
+			return
+		}
 		userRole := c.GetString("user_role")
 		log.Printf("RoleAuth check: userRole=%s, requiredRoles=%v", userRole, roles)
 

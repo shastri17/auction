@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 
 	"auction-backend/database"
@@ -43,12 +44,23 @@ func main() {
 	r := gin.Default()
 
 	// CORS configuration
-	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowOrigins = []string{"http://localhost:3000", "http://localhost:3001", "http://localhost:9999"}
-	corsConfig.AllowCredentials = true
-	corsConfig.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
-	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+
+	// CORS must come first
+	corsConfig := cors.Config{
+		AllowOriginFunc: func(origin string) bool {
+			log.Println("Origin:", origin)
+			return true // dynamically allow all origins
+		},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowCredentials: true,
+	}
 	r.Use(cors.New(corsConfig))
+
+	// OPTIONS catch-all to make sure preflight never fails
+	r.OPTIONS("/*path", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
 
 	// Initialize handlers with dependencies
 	handlers := handlers.NewHandlers(db, redisClient, hub)
@@ -67,7 +79,7 @@ func main() {
 	}
 
 	log.Printf("Server starting on port %s", port)
-	if err := r.Run(":" + port); err != nil {
+	if err := r.Run("0.0.0.0:" + port); err != nil {
 		log.Fatal("Failed to start server:", err)
 	}
 }
