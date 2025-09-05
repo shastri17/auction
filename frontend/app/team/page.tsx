@@ -292,7 +292,7 @@ function TeamDashboardContent() {
       
       // Test basic connectivity first
       try {
-        const healthResponse = await fetch('http://localhost:9999/health')
+        const healthResponse = await fetch('http://13.234.48.132:9999/health')
         const healthData = await healthResponse.text()
         console.log('Health check response:', healthData)
       } catch (healthError) {
