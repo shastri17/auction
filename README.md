@@ -55,7 +55,7 @@ auction/
 - Go 1.21+
 - Node.js 18+
 - PostgreSQL 15+
-- Docker (optional)
+- Docker 
 
 ### Installation
 1. Clone the repository
@@ -64,10 +64,7 @@ auction/
 4. Run the development servers
 
 ## Development Commands
-- `make dev` - Start both frontend and backend
-- `make build` - Build both applications
-- `make test` - Run tests
-- `make docker` - Run with Docker Compose
+- `docker-compose up --build` - to run the server locally
 
 ## Database Management
 - `./seed-database.sh` - Seed the database with initial data (first time only)
