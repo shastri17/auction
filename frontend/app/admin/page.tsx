@@ -182,13 +182,20 @@ function PlayerCategoriesView({ onAssignPlayerToTeam }: { onAssignPlayerToTeam: 
                   
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Status</p>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      player.is_sold 
-                        ? 'bg-green-100 text-green-800 border border-green-200' 
-                        : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
-                    }`}>
-                      {player.is_sold ? 'Sold' : 'Available'}
-                    </span>
+                    <div className="space-y-2">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        player.is_sold 
+                          ? 'bg-green-100 text-green-800 border border-green-200' 
+                          : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                      }`}>
+                        {player.is_sold ? 'Sold' : 'Available'}
+                      </span>
+                      {player.is_sold && player.current_team && (
+                        <div className="text-xs text-gray-600">
+                          <span className="font-medium">Team:</span> {player.current_team.name}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
                   {!player.is_sold && (
@@ -482,9 +489,24 @@ function AdminDashboardContent() {
                         </div>
                         <div className="text-center bg-green-50 rounded-lg p-3">
                           <div className="text-lg font-bold text-green-600">
-                            {Math.min((team.total_points || 0) - (team.used_points || 0), 200).toLocaleString()}
+                            {(() => {
+                              const remainingPoints = (team.total_points || 0) - (team.used_points || 0);
+                              const minPlayersRequired = 12;
+                              const basePricePerPlayer = 200;
+                              const playersAcquired = team.player_count || 0;
+                              const remainingPlayersNeeded = minPlayersRequired - playersAcquired - 1;
+                              
+                              if (remainingPlayersNeeded > 0) {
+                                const minPointsForRemainingPlayers = remainingPlayersNeeded * basePricePerPlayer;
+                                const maxSafeBid = remainingPoints - minPointsForRemainingPlayers;
+                                return Math.max(0, maxSafeBid).toLocaleString();
+                              } else {
+                                // If team has enough players, they can bid all remaining points
+                                return remainingPoints.toLocaleString();
+                              }
+                            })()}
                           </div>
-                          <div className="text-xs text-green-600">Max Bid</div>
+                          <div className="text-xs text-green-600">Max Safe Bid</div>
                         </div>
                       </div>
 
@@ -557,6 +579,13 @@ function AdminDashboardContent() {
                             <p className="text-xs text-gray-500 uppercase tracking-wide">Acquisition Price</p>
                             <p className="text-sm font-medium text-gray-900">{player.current_price.toLocaleString()}</p>
                           </div>
+                          
+                          {player.current_team && (
+                            <div>
+                              <p className="text-xs text-gray-500 uppercase tracking-wide">Team</p>
+                              <p className="text-sm font-medium text-gray-900">{player.current_team.name}</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}

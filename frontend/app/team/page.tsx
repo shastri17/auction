@@ -169,13 +169,20 @@ function TeamRosterView({ players }: { players: Player[] }) {
                   
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Status:</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      player.is_sold 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {player.is_sold ? 'Sold' : 'Available'}
-                    </span>
+                    <div className="text-right">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        player.is_sold 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {player.is_sold ? 'Sold' : 'Available'}
+                      </span>
+                      {player.is_sold && player.current_team && (
+                        <div className="text-xs text-gray-600 mt-1">
+                          <span className="font-medium">Team:</span> {player.current_team.name}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -955,6 +962,11 @@ function TeamDashboardContent() {
                           <span className={`badge ${player.is_sold ? 'badge-success' : 'badge-warning'}`}>
                             {player.is_sold ? 'Sold' : 'Available'}
                           </span>
+                          {player.is_sold && player.current_team && (
+                            <div className="text-xs text-gray-600 mt-1">
+                              <span className="font-medium">Team:</span> {player.current_team.name}
+                            </div>
+                          )}
                         </div>
                       </div>
                       

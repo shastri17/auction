@@ -88,6 +88,10 @@ export interface Player {
   current_price: number
   is_sold: boolean
   current_team_id?: string
+  current_team?: {
+    id: string
+    name: string
+  }
 }
 
 export interface Team {

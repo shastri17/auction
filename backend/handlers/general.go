@@ -124,7 +124,7 @@ func (h *Handlers) Register(c *gin.Context) {
 func (h *Handlers) GetPlayers(c *gin.Context) {
 	var players []models.Player
 
-	query := h.DB.Preload("User")
+	query := h.DB.Preload("User").Preload("CurrentTeam")
 
 	// Add filters
 	if status := c.Query("status"); status != "" {
@@ -670,7 +670,7 @@ func (h *Handlers) GetCurrentBid(c *gin.Context) {
 func (h *Handlers) GetPlayersByCategory(c *gin.Context) {
 	var players []models.Player
 
-	query := h.DB.Preload("User")
+	query := h.DB.Preload("User").Preload("CurrentTeam")
 
 	// Add status filter if provided
 	if status := c.Query("status"); status != "" {

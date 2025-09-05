@@ -35,6 +35,7 @@ type Player struct {
 	IsRetained      bool       `json:"is_retained" gorm:"default:false"`
 	RetainedBy      *uuid.UUID `json:"retained_by" gorm:"type:uuid"`
 	CurrentTeamID   *uuid.UUID `json:"current_team_id" gorm:"type:uuid"`
+	CurrentTeam     *Team      `json:"current_team,omitempty" gorm:"foreignKey:CurrentTeamID"`
 	BasePrice       int        `json:"base_price" gorm:"default:200"`
 	CurrentPrice    int        `json:"current_price" gorm:"default:200"`
 	IsSold          bool       `json:"is_sold" gorm:"default:false"`
