@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Gavel, Users, DollarSign, Trophy, Plus, Check, X } from 'lucide-react'
 import { adminAPI } from '@/lib/api'
 import { generalAPI } from '@/lib/api' // Added import for generalAPI
+import { calculateMaxSafeBid } from '@/lib/calculations'
 
 interface Player {
   id: string
@@ -31,6 +32,7 @@ interface Team {
   remaining_points: number
   player_count: number
   min_players: number
+  max_players?: number
 }
 
 interface Auction {
@@ -655,16 +657,19 @@ export default function AuctionManager() {
                               const team = teams.find(t => t.id === selectedTeamForBid);
                               if (!team) return 0;
                               
-                              const remainingPoints = team.remaining_points || 0;
-                              const currentPlayers = team.player_count || 0;
-                              const minPlayers = team.min_players || 12;
-                              const playersNeeded = Math.max(0, minPlayers - currentPlayers);
+                              const teamDashboard = {
+                                team_id: team.id,
+                                team_name: team.name,
+                                total_points: team.total_points || 0,
+                                used_points: team.used_points || 0,
+                                remaining_points: team.remaining_points || 0,
+                                player_count: team.player_count || 0,
+                                min_players: team.min_players || 12,
+                                max_players: team.max_players || 20
+                              };
                               
-                              // Calculate maximum safe bid: remaining points minus ((players needed - 1) × base price)
-                              // This ensures the team has enough points left to fill all remaining slots at base price
-                              // We subtract 1 from players needed because we're bidding on 1 player now
-                              const basePrice = 200;
-                              const maxSafeBid = remainingPoints - ((playersNeeded - 1) * basePrice);
+                              // Use centralized calculation function
+                              const maxSafeBid = calculateMaxSafeBid(teamDashboard);
                               
                               // Return the safe bid amount, but not less than 0
                               return Math.max(maxSafeBid, 0);

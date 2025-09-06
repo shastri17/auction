@@ -24,6 +24,7 @@ import { teamAPI, adminAPI, generalAPI } from '@/lib/api'
 import LiveAuction from './components/LiveAuction'
 import { useWebSocket } from '@/lib/websocket'
 import AuthGuard from '@/components/AuthGuard'
+import { calculateMaxSafeBid, calculatePointsPerRemainingPlayer } from '@/lib/calculations'
 
 // Team Roster View Component
 function TeamRosterView({ players }: { players: Player[] }) {
@@ -630,19 +631,7 @@ function TeamDashboardContent() {
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-500">Max Safe Bid</p>
                     <p className="text-2xl font-semibold text-orange-600">
-                      {(() => {
-                        const minPlayersRequired = 12
-                        const playersAcquired = dashboard.player_count
-                        const remainingPlayersNeeded = Math.max(0, minPlayersRequired - playersAcquired - 1)
-                        
-                        if (remainingPlayersNeeded <= 0) {
-                          return dashboard.remaining_points.toLocaleString()
-                        }
-                        
-                        const minPointsForRemainingPlayers = remainingPlayersNeeded * 200
-                        const safePointsToBid = dashboard.remaining_points - minPointsForRemainingPlayers
-                        return Math.max(0, safePointsToBid).toLocaleString()
-                      })()}
+                      {calculateMaxSafeBid(dashboard).toLocaleString()}
                     </p>
                   </div>
                 </div>
@@ -796,7 +785,7 @@ function TeamDashboardContent() {
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">Max Safe Bid</h3>
                 <p className="text-3xl font-bold text-orange-600">
-                  {dashboard.remaining_points - (Math.max(0, dashboard.min_players - dashboard.player_count - 1) * 200)}
+                  {calculateMaxSafeBid(dashboard)}
                 </p>
                 <p className="text-sm text-gray-500">points</p>
               </div>
@@ -830,7 +819,7 @@ function TeamDashboardContent() {
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h4 className="font-medium text-gray-900 mb-2">Points per Remaining Player</h4>
                     <p className="text-2xl font-bold text-green-600">
-                      {dashboard.remaining_points / Math.max(1, Math.max(0, dashboard.min_players - dashboard.player_count - 1))}
+                      {Math.round(calculatePointsPerRemainingPlayer(dashboard))}
                     </p>
                     <p className="text-sm text-gray-500">points</p>
                   </div>

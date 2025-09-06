@@ -5,6 +5,7 @@ import { Gavel, DollarSign, Users, Clock, TrendingUp, AlertCircle, Trophy } from
 import { teamAPI } from '@/lib/api'
 import { useWebSocket } from '@/lib/websocket'
 import PlayerProfile from '../../admin/components/PlayerProfile'
+import { calculateMaxSafeBid } from '@/lib/calculations'
 
 interface LiveAuctionProps {
   teamId: string
@@ -247,25 +248,8 @@ export default function LiveAuction({ teamId, dashboard, remainingPoints: propRe
     return getNextBidAmount(currentAuction.current_bid || 0)
   }
 
-  // Calculate maximum safe bid based on remaining players needed
-  const minPlayersRequired = 12
-  const getMaxSafeBid = () => {
-    const playersAcquired = dashboard?.player_count || 0
-    const remainingPlayersNeeded = Math.max(0, minPlayersRequired - playersAcquired - 1) // -1 for current player being bid on
-    
-    if (remainingPlayersNeeded <= 0) {
-      // Already have minimum players, can bid up to remaining points
-      return remainingPoints
-    }
-    
-    // Calculate minimum points needed for remaining players (200 base price each)
-    const minPointsForRemainingPlayers = remainingPlayersNeeded * 200
-    const safePointsToBid = remainingPoints - minPointsForRemainingPlayers
-    
-    return Math.max(0, safePointsToBid)
-  }
-
-  const maxSafeBid = getMaxSafeBid()
+  // Calculate maximum safe bid using centralized function
+  const maxSafeBid = dashboard ? calculateMaxSafeBid(dashboard) : remainingPoints
   const nextBidAmount = getCurrentBidAmount()
   const canAffordNextBid = nextBidAmount <= maxSafeBid
 

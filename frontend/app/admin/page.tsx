@@ -14,6 +14,7 @@ import { adminAPI, generalAPI, Player, Team } from '@/lib/api'
 import PlayerSeeder from './components/PlayerSeeder'
 import AuctionManager from './components/AuctionManager'
 import AuthGuard from '@/components/AuthGuard'
+import { calculateMaxSafeBid } from '@/lib/calculations'
 
 // Player Categories View Component
 function PlayerCategoriesView({ onAssignPlayerToTeam }: { onAssignPlayerToTeam: (player: Player) => void }) {
@@ -490,20 +491,17 @@ function AdminDashboardContent() {
                         <div className="text-center bg-green-50 rounded-lg p-3">
                           <div className="text-lg font-bold text-green-600">
                             {(() => {
-                              const remainingPoints = (team.total_points || 0) - (team.used_points || 0);
-                              const minPlayersRequired = 12;
-                              const basePricePerPlayer = 200;
-                              const playersAcquired = team.player_count || 0;
-                              const remainingPlayersNeeded = minPlayersRequired - playersAcquired - 1;
-                              
-                              if (remainingPlayersNeeded > 0) {
-                                const minPointsForRemainingPlayers = remainingPlayersNeeded * basePricePerPlayer;
-                                const maxSafeBid = remainingPoints - minPointsForRemainingPlayers;
-                                return Math.max(0, maxSafeBid).toLocaleString();
-                              } else {
-                                // If team has enough players, they can bid all remaining points
-                                return remainingPoints.toLocaleString();
-                              }
+                              const teamDashboard = {
+                                team_id: team.id,
+                                team_name: team.name,
+                                total_points: team.total_points || 0,
+                                used_points: team.used_points || 0,
+                                remaining_points: (team.total_points || 0) - (team.used_points || 0),
+                                player_count: team.player_count || 0,
+                                min_players: team.min_players || 12,
+                                max_players: team.max_players || 20
+                              };
+                              return calculateMaxSafeBid(teamDashboard).toLocaleString();
                             })()}
                           </div>
                           <div className="text-xs text-green-600">Max Safe Bid</div>
